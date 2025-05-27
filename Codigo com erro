@@ -1,0 +1,73 @@
+#include "esp_camera.h"
+#include <QRCode.h>
+#include <Audio.h>
+#include <SD.h>
+#include <SPI.h>
+
+// Configuração da câmera (ajuste conforme seu hardware)
+#define CAM_PIN_PCLK 39
+#define CAM_PIN_VSYNC 6
+#define CAM_PIN_HREF 7
+#define CAM_PIN_D0 40
+// ... (complete com todos os pinos)
+
+Audio audio;
+QRCode qrDecoder;
+
+void setup() {
+  Serial.begin(115200);
+  
+  // Inicializa câmera
+  camera_config_t config;
+  config.ledc_channel = LEDC_CHANNEL_0;
+  config.ledc_timer = LEDC_TIMER_0;
+  config.pin_pwdn = -1;
+  config.pin_reset = -1;
+  config.pin_xclk = CAM_PIN_XCLK;
+  // ... (complete com sua configuração)
+  esp_err_t err = esp_camera_init(&config);
+  
+  // Inicializa SD Card
+  SD.begin(4); // Pino CS do SD card
+  
+  // Inicializa áudio I2S
+  audio.setPinout(17, 18, 8); // BCK, LRCK, DIN
+  audio.setVolume(10); // Volume 0-21
+}
+
+void loop() {
+  camera_fb_t *fb = esp_camera_fb_get(); // Captura frame da câmera
+  if (!fb) return;
+
+  // Decodifica QR Code
+  uint8_t *data = fb->buf;
+  int width = fb->width;
+  int height = fb->height;
+  qrDecoder.init();
+  bool qrFound = qrDecoder.decode(data, width, height);
+  
+  if (qrFound) {
+    String qrContent = qrDecoder.getResult();
+    Serial.println("QR Code: " + qrContent);
+    playAudioForQR(qrContent); // Reproduz áudio correspondente
+  }
+
+  esp_camera_fb_return(fb); // Libera o frame
+  delay(1000); // Intervalo entre leituras
+}
+
+// Função para mapear QR → Áudio
+void playAudioForQR(String qrContent) {
+  String audioFile;
+  
+  if (qrContent == "https://exemplo.com/audio1") {
+    audioFile = "/audio1.mp3";
+  } else if (qrContent == "https://exemplo.com/audio2") {
+    audioFile = "/audio2.mp3";
+  } // Adicione mais mapeamentos
+
+  if (audioFile != "") {
+    audio.connecttoSD(audioFile.c_str());
+    while (audio.isRunning()) { audio.loop(); }
+  }
+}
